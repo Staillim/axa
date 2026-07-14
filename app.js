@@ -102,6 +102,32 @@ function showToast(message) {
     }, 2200);
 }
 
+// Toast con checkmark negro, aparece ARRIBA (estilo Roblox)
+// Usado para confirmar el envío de Robux
+function showSendSuccessToast(amount) {
+    const existing = document.getElementById("sendSuccessToast");
+    if (existing) existing.remove();
+
+    const t = document.createElement("div");
+    t.id = "sendSuccessToast";
+    t.className = "send-success-toast";
+    t.innerHTML = `
+        <span class="send-success-toast-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+        </span>
+        <span>You sent ${formatNum(amount)} Robux</span>
+    `;
+    document.body.appendChild(t);
+    setTimeout(() => {
+        t.style.transition = "opacity 0.2s, transform 0.2s";
+        t.style.opacity = "0";
+        t.style.transform = "translate(-50%, -10px)";
+        setTimeout(() => t.remove(), 220);
+    }, 2500);
+}
+
 // ============== TAB SWITCHING ==============
 (function () {
     const tabs = document.querySelectorAll(".tab");
@@ -434,7 +460,6 @@ function showToast(message) {
                         <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                     </div>
                     <h3>You sent ${formatNum(amount)} Robux</h3>
-                    <p>a <strong>@${escapeHtml(user.name)}</strong></p>
                 </div>
             </div>
         `;
@@ -493,6 +518,8 @@ function showToast(message) {
                     showSendStep("loading");
                     setTimeout(() => {
                         addTransaction("out", amount, recipient);
+                        // Mostrar el toast con check negro ARRIBA
+                        showSendSuccessToast(amount);
                         showSendStep("success");
                         setTimeout(closeModal, 1800);
                     }, 800);

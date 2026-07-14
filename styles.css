@@ -2587,6 +2587,44 @@ svg { display: block; }
     from { transform: translate(-50%, 20px); opacity: 0; }
     to { transform: translate(-50%, 0); opacity: 1; }
 }
+.send-success-toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #fff;
+    color: #111;
+    padding: 8px 20px 8px 8px;
+    border-radius: 999px;
+    font-size: 15px;
+    font-weight: 700;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+    z-index: 200;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    animation: sendToastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    max-width: calc(100vw - 32px);
+}
+.send-success-toast-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #111;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.send-success-toast-icon svg {
+    width: 18px;
+    height: 18px;
+}
+@keyframes sendToastIn {
+    from { transform: translate(-50%, -30px); opacity: 0; }
+    to { transform: translate(-50%, 0); opacity: 1; }
+}
 
 /* ============== SEND FLOW (multi-step) ============== */
 .send-flow {
