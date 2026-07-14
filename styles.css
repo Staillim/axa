@@ -1075,16 +1075,21 @@ svg { display: block; }
     z-index: 110;
     display: none;
     overflow-y: auto;
-    background: #fff;
+    /* Sin background — la imagen del hero debe verse edge-to-edge */
+    background: #000;
     animation: fadeIn 0.2s ease;
 }
 .login-modal-overlay.open { display: block; }
 
 .login-modal-container {
-    min-height: 100%;
+    /* Altura completa del viewport en todos los dispositivos,
+       con fallback a 100dvh para móviles (evita el problema del
+       100vh cuando la barra de URL está visible) */
+    min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
-    background: #fff;
+    background: #000;  /* fallback si la imagen no carga */
 }
 
 /* Header edge-to-edge, sólido (fuera de la imagen) */
@@ -1213,11 +1218,21 @@ svg { display: block; }
 .login-modal-hero {
     position: relative;
     width: 100%;
-    height: 520px;
+    /* Altura mínima para que se vea bien en pantallas grandes,
+       pero se expande con flex-grow para llenar el espacio disponible
+       en pantallas pequeñas/medianas */
+    min-height: 520px;
+    flex: 1 1 auto;
     overflow: hidden;
-    flex-shrink: 0;
+    /* La imagen como background para garantizar cobertura total */
+    background-image: url("../recursos/fondo de inicio de seccion.jpg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
 }
 .login-modal-bg-img {
+    /* Oculto pero presente en el DOM por accesibilidad / fallback.
+       El background real es background-image en .login-modal-hero */
     position: absolute;
     inset: 0;
     width: 100%;
@@ -1225,6 +1240,7 @@ svg { display: block; }
     object-fit: cover;
     object-position: center;
     display: block;
+    z-index: -1;
 }
 .login-modal-form-wrap {
     position: absolute;
