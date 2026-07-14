@@ -192,6 +192,9 @@ function showSendSuccessToast(amount) {
     function openModal() {
         overlay.classList.add("open");
         overlay.setAttribute("aria-hidden", "false");
+        // Mostrar la lista de recientes al abrir el modal
+        renderRecents();
+        showOnly("initial");
         setTimeout(() => searchInput.focus(), 150);
         document.body.style.overflow = "hidden";
     }
@@ -323,6 +326,56 @@ function showSendSuccessToast(amount) {
         user: null,
         amount: 0,
     };
+
+    // ============== Recientes (últimos usuarios a los que se envió) ==============
+    const RECENTS_KEY = "roblox_clone_send_recents";
+    const RECENTS_MAX = 5;
+
+    function loadRecents() {
+        try {
+            const raw = localStorage.getItem(RECENTS_KEY);
+            const arr = raw ? JSON.parse(raw) : [];
+            return Array.isArray(arr) ? arr : [];
+        } catch (_) { return []; }
+    }
+    function saveRecents(arr) {
+        try {
+            localStorage.setItem(RECENTS_KEY, JSON.stringify(arr.slice(0, RECENTS_MAX)));
+        } catch (_) {}
+    }
+    function addRecent(user) {
+        if (!user) return;
+        const arr = loadRecents();
+        // Quitar duplicado por id
+        const filtered = arr.filter((u) => u.id !== user.id);
+        // Agregar al frente
+        filtered.unshift({
+            id: user.id,
+            name: user.name,
+            displayName: user.displayName,
+            hasVerifiedBadge: user.hasVerifiedBadge,
+            avatarUrl: user.avatarUrl || null,
+        });
+        saveRecents(filtered);
+        renderRecents();
+    }
+    function renderRecents() {
+        const list = document.getElementById("recentsList");
+        const empty = document.getElementById("recentsEmpty");
+        const count = document.getElementById("recentsCount");
+        if (!list) return;
+        const arr = loadRecents();
+        list.innerHTML = "";
+        if (count) count.textContent = `(${arr.length})`;
+        if (arr.length === 0) {
+            if (empty) empty.hidden = false;
+            return;
+        }
+        if (empty) empty.hidden = true;
+        arr.forEach((u) => {
+            list.appendChild(userCard(u));
+        });
+    }
 
     function avatarImg(user) {
         if (user.avatarUrl) {
@@ -518,10 +571,11 @@ function showSendSuccessToast(amount) {
                     showSendStep("loading");
                     setTimeout(() => {
                         addTransaction("out", amount, recipient);
-                        // Mostrar el toast con check negro ARRIBA
+                        // Guardar el destinatario en recientes para la próxima vez
+                        addRecent(sendState.user);
+                        // Mostrar el toast con check negro ARRIBA y cerrar el modal
                         showSendSuccessToast(amount);
-                        showSendStep("success");
-                        setTimeout(closeModal, 1800);
+                        setTimeout(closeModal, 600);
                     }, 800);
                 }, 700);
             });

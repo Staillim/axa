@@ -1148,8 +1148,9 @@
             <div class="modal-body">
                 <input type="text" class="modal-search" id="userSearch" placeholder="Buscar por nombre de usuario" aria-label="Buscar usuario" autocomplete="off" />
                 <div class="modal-state" id="modalState" data-state="initial">
-                    <h3 class="modal-section-title">Mis amistades <span class="count">(0)</span></h3>
-                    <p class="modal-empty">Sin amistades</p>
+                    <h3 class="modal-section-title" id="recentsTitle">Recientes <span class="count" id="recentsCount">(0)</span></h3>
+                    <div class="user-list" id="recentsList"></div>
+                    <p class="modal-empty" id="recentsEmpty" hidden>No hay envíos recientes todavía.</p>
                 </div>
                 <div class="modal-state modal-state-loading" id="modalLoading" hidden>
                     <div class="spinner" aria-hidden="true"></div>
