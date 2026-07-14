@@ -1,8 +1,36 @@
 // ============== APP STATE (balance + transactions) ==============
-const appState = {
-    balance: 0,
-    transactions: [],
-};
+// El balance y las transacciones se persisten en localStorage para que
+// sobrevivan al cerrar sesión y al recargar la página.
+const BALANCE_KEY = "roblox_clone_balance";
+
+function loadBalanceState() {
+    try {
+        const raw = localStorage.getItem(BALANCE_KEY);
+        if (raw) {
+            const data = JSON.parse(raw);
+            return {
+                balance: Number(data.balance) || 0,
+                transactions: Array.isArray(data.transactions) ? data.transactions : [],
+            };
+        }
+    } catch (_) { /* ignore */ }
+    return { balance: 0, transactions: [] };
+}
+
+function saveBalanceState() {
+    try {
+        localStorage.setItem(BALANCE_KEY, JSON.stringify({
+            balance: appState.balance,
+            transactions: appState.transactions,
+        }));
+    } catch (_) { /* ignore quota errors */ }
+}
+
+const appState = loadBalanceState();
+
+// Pintar el balance y las transacciones persistidas al cargar la página
+updateBalanceDisplay();
+updateTransactionsDisplay();
 
 function formatNum(n) {
     return Number(n || 0).toLocaleString("en-US");
@@ -40,6 +68,7 @@ function addTransaction(type, amount, party) {
     else if (type === "out") appState.balance = Math.max(0, appState.balance - amount);
     updateBalanceDisplay();
     updateTransactionsDisplay();
+    saveBalanceState();
 }
 
 function setButtonLoading(btn, loading, label) {
@@ -1138,18 +1167,12 @@ function showToast(message) {
     // Listen for signout requests from other parts of the app (e.g. settings dropdown)
     window.addEventListener("roblox:requestSignOut", signOut);
 
-    // Add logout button to profile chip (dropdown) — or as a simple click handler
+    // El profile-chip es solo visual — al hacer click no debe pasar nada.
+    // El usuario cierra sesión desde el botón "Cerrar sesión" del panel admin
+    // o desde el menú de ajustes (settings dropdown).
     const profileChip = document.querySelector(".profile-chip");
     if (profileChip) {
-        profileChip.addEventListener("click", (e) => {
-            const session = getSession();
-            if (!isSessionValid(session)) return;
-            // Simple confirm sign out
-            if (confirm("¿Cerrar sesión de " + session.username + "?")) {
-                signOut();
-            }
-        });
-        profileChip.style.cursor = "pointer";
+        profileChip.style.cursor = "default";
     }
 
     // ============== Admin: create user ==============
