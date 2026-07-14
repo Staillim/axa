@@ -433,8 +433,8 @@ function showToast(message) {
                     <div class="send-success-icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                     </div>
-                    <h3>¡Envío exitoso!</h3>
-                    <p>Enviaste <strong>${formatNum(amount)} Robux</strong> a <strong>@${escapeHtml(user.name)}</strong>.</p>
+                    <h3>You sent ${formatNum(amount)} Robux</h3>
+                    <p>a <strong>@${escapeHtml(user.name)}</strong></p>
                 </div>
             </div>
         `;
