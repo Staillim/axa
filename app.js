@@ -192,6 +192,13 @@ function showSendSuccessToast(amount) {
     function openModal() {
         overlay.classList.add("open");
         overlay.setAttribute("aria-hidden", "false");
+        // Limpiar cualquier flow residual (loading, amount, confirm) de la sesión anterior
+        const stale = overlay.querySelectorAll(".send-flow");
+        stale.forEach((el) => el.remove());
+        // Resetear estado del envío
+        sendState.user = null;
+        sendState.amount = 0;
+        sendState.step = null;
         // Mostrar la lista de recientes al abrir el modal
         renderRecents();
         showOnly("initial");
@@ -204,6 +211,9 @@ function showSendSuccessToast(amount) {
         document.body.style.overflow = "";
         // reset state on close
         searchInput.value = "";
+        // Limpiar cualquier send-flow (loading, amount, confirm) que haya quedado
+        const stale = overlay.querySelectorAll(".send-flow");
+        stale.forEach((el) => el.remove());
         showOnly("initial");
         fallbackBanner.hidden = true;
     }
