@@ -1794,6 +1794,24 @@ svg { display: block; }
 }
 .pago-view { animation: fadeIn 0.22s ease; }
 .pago-view[hidden] { display: none; }
+.pago-success {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 48px 16px 24px;
+}
+.pago-success .send-success-icon { margin: 0 auto 18px; }
+.pago-success .pago-verify-title {
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
+}
+.pago-success .pago-verify-text {
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
+}
 
 /* Summary card */
 .pago-summary {
