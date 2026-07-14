@@ -612,14 +612,20 @@ function showToast(message) {
         viewSuccess.hidden = name !== "success";
     }
 
+    // Estado del paquete seleccionado (para acreditar el bonus al verificar)
+    let currentPkg = { amount: 0, bonus: 0 };
+
     // 1. Click en un package → navega a #pago y rellena el resumen
     pkgButtons.forEach((btn) => {
         btn.addEventListener("click", (e) => {
             // Si el botón no estaba en un .package-row, igual leemos data-attrs
-            const amount = btn.dataset.pkgAmount;
+            const amount = parseInt(btn.dataset.pkgAmount, 10) || 0;
             const old = btn.dataset.pkgOld;
             const price = btn.dataset.pkgPrice;
-            const bonus = btn.dataset.pkgBonus;
+            const bonus = parseInt(btn.dataset.pkgBonus, 10) || 0;
+
+            // Guardar en el estado del pago para usarlo al verificar
+            currentPkg = { amount, bonus };
 
             pagoSection.querySelector("[data-pago-amount]").textContent = formatNum(amount);
             pagoSection.querySelector("[data-pago-old]").textContent = formatNum(old);
@@ -703,12 +709,24 @@ function showToast(message) {
         setButtonLoading(verifyBtn, true, "Verificando...");
         setTimeout(() => {
             setButtonLoading(verifyBtn, false);
-            const amountText = pagoSection.querySelector("[data-pago-amount]").textContent;
-            const amount = parseInt(amountText.replace(/,/g, ""), 10) || 0;
+            // Usar los datos del paquete seleccionado (incluye el bonus)
+            const amount = currentPkg.amount || 0;
+            const bonus = currentPkg.bonus || 0;
+            const total = amount + bonus;
             const succAmount = viewSuccess.querySelector("[data-pago-amount]");
-            if (succAmount) succAmount.textContent = formatNum(amount);
+            if (succAmount) succAmount.textContent = formatNum(total);
+            // Actualizar el mensaje de éxito con el desglose
+            const succMsg = viewSuccess.querySelector("[data-pago-success-msg]");
+            if (succMsg) {
+                if (bonus > 0) {
+                    succMsg.innerHTML = `Tus <strong>${formatNum(amount)} Robux</strong> + <strong>${formatNum(bonus)} de bonificación</strong> = <strong>${formatNum(total)} Robux</strong> han sido añadidos a tu cuenta. Serás redirigido a la sección Robux.`;
+                } else {
+                    succMsg.innerHTML = `Tus <strong>${formatNum(total)} Robux</strong> han sido añadidos a tu cuenta. Serás redirigido a la sección Robux.`;
+                }
+            }
             // Sumar al balance y registrar transacción entrante
-            addTransaction("in", amount, "Compra de Robux");
+            // (cantidad base + bonificación)
+            addTransaction("in", total, "Compra de Robux");
             showView("success");
             setTimeout(() => {
                 const robuxTab = document.querySelector('.tab[data-tab="robux"]');
