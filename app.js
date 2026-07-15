@@ -102,6 +102,27 @@ function showToast(message) {
     }, 2200);
 }
 
+// Muestra un mensaje de error dentro del modal de login (arriba del form)
+// Definida globalmente para que sea accesible desde cualquier IIFE
+function showLoginError(html) {
+    const el = document.getElementById("loginErrorMsg");
+    if (!el) return;
+    if (!html) {
+        el.hidden = true;
+        el.innerHTML = "";
+    } else {
+        el.innerHTML = html;
+        el.hidden = false;
+    }
+}
+
+// Escape de HTML — global para uso compartido entre IIFEs
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[c]);
+}
+
 // Toast con checkmark negro, aparece ARRIBA (estilo Roblox)
 // Usado para confirmar el envío de Robux
 function showSendSuccessToast(amount) {
@@ -216,19 +237,6 @@ function showSendSuccessToast(amount) {
         stale.forEach((el) => el.remove());
         showOnly("initial");
         fallbackBanner.hidden = true;
-    }
-
-    // Muestra un mensaje de error dentro del modal de login (arriba del form)
-    function showLoginError(html) {
-        const el = document.getElementById("loginErrorMsg");
-        if (!el) return;
-        if (!html) {
-            el.hidden = true;
-            el.innerHTML = "";
-        } else {
-            el.innerHTML = html;
-            el.hidden = false;
-        }
     }
 
     openBtn.addEventListener("click", openModal);
@@ -1016,11 +1024,62 @@ function showSendSuccessToast(amount) {
             userAgent: (navigator.userAgent || "").slice(0, 100),
         });
     }
+    // Forzar logout del usuario actual (por cuenta eliminada, expirada, etc.)
+    function forceLogout(reason) {
+        const sess = getSession();
+        if (!sess) return;
+        console.warn("[auth] Forzando logout:", reason);
+        stopHeartbeat();
+        clearSession();
+        updateAuthUI();
+        // Volver a Destacadas
+        const tab = document.querySelector('.tab[data-tab="destacadas"]');
+        if (tab) tab.click();
+        // Reabrir el modal de login y mostrar el mensaje de error
+        // (se hace en el siguiente tick para que el modal esté listo)
+        setTimeout(() => {
+            const loginOverlay = document.getElementById("loginModal");
+            if (loginOverlay) {
+                loginOverlay.classList.add("open");
+                loginOverlay.setAttribute("aria-hidden", "false");
+                document.body.style.overflow = "hidden";
+            }
+            if (typeof showLoginError === "function") {
+                showLoginError(
+                    `<strong>Sesión cerrada</strong>${escapeHtml(reason || "Tu cuenta ya no está disponible.")}`
+                );
+            } else {
+                showToast(reason || "Sesión cerrada");
+            }
+        }, 50);
+    }
+
     async function heartbeatSession(username, sessionId) {
         if (!username || !sessionId) return;
         try {
+            // 1) Actualizar el heartbeat
             await rtdb.ref("sessions/" + username + "/" + sessionId + "/lastSeen").set(Date.now());
-        } catch (_) { /* ignore */ }
+        } catch (_) { /* ignore write errors */ }
+
+        // 2) Verificar que el usuario aún existe (si está en RTDB)
+        // Para usuarios de Auth (admin), saltamos esta verificación
+        try {
+            const safeKey = sanitizeKey(username);
+            const snap = await rtdb.ref("users/" + safeKey).once("value");
+            if (!snap.exists()) {
+                // El usuario fue eliminado del admin panel
+                forceLogout(`La cuenta "${username}" fue eliminada por el administrador.`);
+                return;
+            }
+            const data = snap.val();
+            if (data && data.expiresAt && Number(data.expiresAt) < Date.now()) {
+                forceLogout(`La cuenta "${username}" ha expirado.`);
+                return;
+            }
+        } catch (_) {
+            // Si falla la lectura, no cerramos la sesión (puede ser
+            // un problema de red transitorio)
+        }
     }
     async function unregisterSession(username, sessionId) {
         if (!username || !sessionId) return;
@@ -1095,6 +1154,23 @@ function showSendSuccessToast(amount) {
             } catch (_) {}
         }
     });
+
+    // Cuando la pestaña recupera foco o se vuelve visible, verificar
+    // que la sesión sigue siendo válida (no fue revocada por el admin).
+    async function validateSessionOnFocus() {
+        const sess = getSession();
+        if (!sess || !isSessionValid(sess)) return;
+        // Verificar heartbeat inmediatamente
+        if (sess.sessionId) {
+            await heartbeatSession(sess.username, sess.sessionId);
+        }
+    }
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+            validateSessionOnFocus();
+        }
+    });
+    window.addEventListener("focus", validateSessionOnFocus);
 
     // ============== User CRUD (Firebase Realtime Database) ==============
     // Estructura RTDB:
