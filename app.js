@@ -123,6 +123,15 @@ function escapeHtml(s) {
     })[c]);
 }
 
+// ============== Session helper (global) ==============
+const SESSION_KEY = "roblox_clone_session";
+function getSession() {
+    try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (_) { return null; }
+}
+
 // Toast con checkmark negro, aparece ARRIBA (estilo Roblox)
 // Usado para confirmar el envío de Robux
 function showSendSuccessToast(amount) {
@@ -799,6 +808,12 @@ function showSendSuccessToast(amount) {
         setButtonLoading(continueBtn, true, "Procesando...");
         setTimeout(() => {
             setButtonLoading(continueBtn, false);
+            // Personalizar el correo enmascarado con la inicial del usuario
+            const sess = getSession();
+            const username = sess && sess.username ? sess.username : "";
+            const initial = (username.charAt(0) || "u").toLowerCase();
+            const emailEl = pagoSection.querySelector("[data-pago-email]");
+            if (emailEl) emailEl.textContent = `${initial}***@gmail.com`;
             showView("verify");
             setTimeout(() => pinInputs[0].focus(), 150);
         }, 900);
@@ -963,7 +978,8 @@ function showSendSuccessToast(amount) {
     }
 
     // ============== Session ==============
-    const SESSION_KEY = "roblox_clone_session";
+    // SESSION_KEY y getSession() están definidos globalmente arriba
+    // (para que sean accesibles desde otros IIFEs, como el de PAGO)
     // Máximo de sesiones simultáneas por usuario (protege contra
     // que varias personas compartan la misma cuenta)
     const SESSIONS_MAX = 1;
@@ -973,12 +989,6 @@ function showSendSuccessToast(amount) {
     // Cada cuánto se manda el heartbeat
     const HEARTBEAT_INTERVAL = 60 * 1000;
 
-    function getSession() {
-        try {
-            const raw = localStorage.getItem(SESSION_KEY);
-            return raw ? JSON.parse(raw) : null;
-        } catch (_) { return null; }
-    }
     function setSession(user) {
         const session = {
             username: user.username,
