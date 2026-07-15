@@ -58,13 +58,15 @@ La configuración de Firebase está en `index.html` (objeto `window.__firebaseCo
 ```json
 {
   "rules": {
-    "users": {
-      ".read": true,
-      ".write": true
-    }
+    "users":    { ".read": true, ".write": true },
+    "sessions": { ".read": true, ".write": true }
   }
 }
 ```
+
+> El nodo `sessions/` se usa para el sistema de **límite de sesiones activas** por usuario
+> (impide que varias personas usen la misma cuenta al mismo tiempo). Las sesiones expiran
+> automáticamente después de 5 minutos sin actividad (heartbeat).
 
 ## Cuentas
 

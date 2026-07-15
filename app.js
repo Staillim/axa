@@ -218,6 +218,19 @@ function showSendSuccessToast(amount) {
         fallbackBanner.hidden = true;
     }
 
+    // Muestra un mensaje de error dentro del modal de login (arriba del form)
+    function showLoginError(html) {
+        const el = document.getElementById("loginErrorMsg");
+        if (!el) return;
+        if (!html) {
+            el.hidden = true;
+            el.innerHTML = "";
+        } else {
+            el.innerHTML = html;
+            el.hidden = false;
+        }
+    }
+
     openBtn.addEventListener("click", openModal);
     closeBtn.addEventListener("click", closeModal);
     overlay.addEventListener("click", (e) => {
@@ -904,6 +917,17 @@ function showSendSuccessToast(amount) {
             }, 900);
         });
     }
+
+    // Limpiar mensaje de error al escribir en los inputs
+    overlay.querySelectorAll(".login-input").forEach((inp) => {
+        inp.addEventListener("input", () => {
+            const err = document.getElementById("loginErrorMsg");
+            if (err && !err.hidden) {
+                err.hidden = true;
+                err.innerHTML = "";
+            }
+        });
+    });
 })();
 
 // ============== FIREBASE + AUTH + ADMIN ==============
@@ -932,6 +956,14 @@ function showSendSuccessToast(amount) {
 
     // ============== Session ==============
     const SESSION_KEY = "roblox_clone_session";
+    // Máximo de sesiones simultáneas por usuario (protege contra
+    // que varias personas compartan la misma cuenta)
+    const SESSIONS_MAX = 1;
+    // Si una sesión no manda heartbeat en este tiempo, se considera
+    // muerta y se libera el slot (5 min)
+    const SESSION_TTL = 5 * 60 * 1000;
+    // Cada cuánto se manda el heartbeat
+    const HEARTBEAT_INTERVAL = 60 * 1000;
 
     function getSession() {
         try {
@@ -944,6 +976,7 @@ function showSendSuccessToast(amount) {
             username: user.username,
             role: user.role,
             avatar: user.avatar || null,
+            sessionId: user.sessionId || (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + "-" + Math.random().toString(36).slice(2)),
             expiresAt: user.expiresAt ? (user.expiresAt.toMillis ? user.expiresAt.toMillis() : new Date(user.expiresAt).getTime()) : null,
             loggedInAt: Date.now(),
         };
@@ -951,6 +984,11 @@ function showSendSuccessToast(amount) {
         return session;
     }
     function clearSession() {
+        const sess = getSession();
+        // Limpiar la sesión activa de RTDB
+        if (sess && sess.sessionId && rtdb) {
+            try { rtdb.ref("sessions/" + sess.username + "/" + sess.sessionId).remove(); } catch (_) {}
+        }
         localStorage.removeItem(SESSION_KEY);
     }
     function isSessionValid(session) {
@@ -958,6 +996,105 @@ function showSendSuccessToast(amount) {
         if (!session.expiresAt) return false;
         return session.expiresAt > Date.now();
     }
+
+    // ============== Gestión de sesiones activas en RTDB ==============
+    // Estructura:
+    //   sessions/
+    //     {username}/
+    //       {sessionId}/
+    //         createdAt: number
+    //         lastSeen:  number
+    //         userAgent: string
+    function generateSessionId() {
+        if (crypto && crypto.randomUUID) return crypto.randomUUID();
+        return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    }
+    async function registerSession(username, sessionId) {
+        await rtdb.ref("sessions/" + username + "/" + sessionId).set({
+            createdAt: Date.now(),
+            lastSeen: Date.now(),
+            userAgent: (navigator.userAgent || "").slice(0, 100),
+        });
+    }
+    async function heartbeatSession(username, sessionId) {
+        if (!username || !sessionId) return;
+        try {
+            await rtdb.ref("sessions/" + username + "/" + sessionId + "/lastSeen").set(Date.now());
+        } catch (_) { /* ignore */ }
+    }
+    async function unregisterSession(username, sessionId) {
+        if (!username || !sessionId) return;
+        try { await rtdb.ref("sessions/" + username + "/" + sessionId).remove(); } catch (_) {}
+    }
+    async function countActiveSessions(username) {
+        try {
+            const snap = await rtdb.ref("sessions/" + username).once("value");
+            if (!snap.exists()) return 0;
+            const now = Date.now();
+            let count = 0;
+            snap.forEach((child) => {
+                const data = child.val();
+                if (data && (now - (data.lastSeen || 0)) < SESSION_TTL) count++;
+            });
+            return count;
+        } catch (_) { return 0; }
+    }
+    async function cleanStaleSessions(username) {
+        try {
+            const snap = await rtdb.ref("sessions/" + username).once("value");
+            if (!snap.exists()) return;
+            const now = Date.now();
+            const updates = {};
+            snap.forEach((child) => {
+                const data = child.val();
+                if (!data || (now - (data.lastSeen || 0)) >= SESSION_TTL) {
+                    updates[child.key] = null;
+                }
+            });
+            if (Object.keys(updates).length > 0) {
+                await rtdb.ref("sessions/" + username).update(updates);
+            }
+        } catch (_) {}
+    }
+    async function getActiveSessionList(username) {
+        try {
+            const snap = await rtdb.ref("sessions/" + username).once("value");
+            if (!snap.exists()) return [];
+            const now = Date.now();
+            const list = [];
+            snap.forEach((child) => {
+                const data = child.val();
+                if (data && (now - (data.lastSeen || 0)) < SESSION_TTL) {
+                    list.push({ id: child.key, ...data });
+                }
+            });
+            return list;
+        } catch (_) { return []; }
+    }
+
+    let heartbeatTimer = null;
+    function startHeartbeat(username, sessionId) {
+        stopHeartbeat();
+        heartbeatTimer = setInterval(() => heartbeatSession(username, sessionId), HEARTBEAT_INTERVAL);
+    }
+    function stopHeartbeat() {
+        if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+        }
+    }
+
+    // Cuando el usuario cierra la pestaña, intentar limpiar la sesión
+    // (best-effort: si el navegador no lo ejecuta, la sesión expira
+    // automáticamente por inactividad de heartbeat en SESSION_TTL)
+    window.addEventListener("pagehide", () => {
+        const sess = getSession();
+        if (sess && sess.sessionId && rtdb) {
+            try {
+                rtdb.ref("sessions/" + sess.username + "/" + sess.sessionId).remove();
+            } catch (_) {}
+        }
+    });
 
     // ============== User CRUD (Firebase Realtime Database) ==============
     // Estructura RTDB:
@@ -1038,6 +1175,10 @@ function showSendSuccessToast(amount) {
 
         if (valid && session) {
             // Logged in
+            // Iniciar el heartbeat para mantener la sesión activa en RTDB
+            if (session.sessionId) {
+                startHeartbeat(session.username, session.sessionId);
+            }
             if (loginTrigger) loginTrigger.hidden = true;
             if (profileChip) {
                 profileChip.hidden = false;
@@ -1118,19 +1259,61 @@ function showSendSuccessToast(amount) {
                 showToast(`Bienvenido, ${name}`);
             };
 
+            // Helper: verificar límite de sesiones activas
+            // Si el usuario ya tiene SESSIONS_MAX sesiones, se rechaza el login
+            // a menos que sea el MISMO sessionId (re-login con la misma sesión)
+            const enforceSessionLimit = async (username, incomingSessionId) => {
+                try {
+                    await cleanStaleSessions(username);
+                    const list = await getActiveSessionList(username);
+                    console.log("[auth] session-limit check for", username, "→ active sessions:", list.length, list.map(s => s.id.slice(0,8)));
+                    const alreadyRegistered = list.some((s) => s.id === incomingSessionId);
+                    if (alreadyRegistered) return { ok: true, sessionId: incomingSessionId };
+                    if (list.length >= SESSIONS_MAX) {
+                        return {
+                            ok: false,
+                            activeSessions: list.length,
+                            otherSessionIds: list.map((s) => s.id),
+                        };
+                    }
+                    return { ok: true, sessionId: incomingSessionId };
+                } catch (e) {
+                    console.error("[auth] session-limit check FAILED (¿reglas de RTDB sin acceso a /sessions?):", e.message);
+                    // Si falla (permisos, red), dejamos pasar pero logueamos
+                    return { ok: true, sessionId: incomingSessionId };
+                }
+            };
+
             // Helper: procesar un usuario de RTDB
-            const handleRtdbUser = (rtdbUser) => {
+            const handleRtdbUser = async (rtdbUser) => {
                 const expiresMs = Number(rtdbUser.expiresAt) || 0;
                 if (expiresMs < Date.now()) {
                     setButtonLoading(submitBtn, false);
-                    showToast("Esta cuenta ha expirado");
+                    showLoginError(`<strong>Cuenta expirada</strong>Esta cuenta ya no está activa. Comunícate con el administrador para renovarla.`);
+                    return false;
+                }
+                const newSessionId = generateSessionId();
+                // Verificar el límite de sesiones
+                const limit = await enforceSessionLimit(rtdbUser.username, newSessionId);
+                if (!limit.ok) {
+                    setButtonLoading(submitBtn, false);
+                    showLoginError(
+                        `<strong>Cuenta en uso en otro dispositivo</strong>` +
+                        `Esta cuenta (<code>@${escapeHtml(rtdbUser.username)}</code>) ya tiene una sesión activa. ` +
+                        `Solo se permite <strong>1 dispositivo por cuenta</strong>.` +
+                        `<br>Para usar esta cuenta en este dispositivo, contacta al administrador y solicita una cuenta nueva.`
+                    );
                     return false;
                 }
                 setSession({
                     username: rtdbUser.username,
                     role: rtdbUser.role || "user",
+                    avatar: rtdbUser.avatar || null,
+                    sessionId: newSessionId,
                     expiresAt: expiresMs,
                 });
+                // Registrar la sesión en RTDB
+                try { await registerSession(rtdbUser.username, newSessionId); } catch (_) {}
                 setButtonLoading(submitBtn, false);
                 updateAuthUI();
                 closeAndWelcome({ username: rtdbUser.username });
@@ -1141,6 +1324,7 @@ function showSendSuccessToast(amount) {
             const handleAuthUser = async (authUser) => {
                 let role = "admin";
                 let expiresMs = Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 año
+                let avatar = null;
                 // Buscar metadata extra en RTDB (por si el admin limitó su propia cuenta)
                 try {
                     const safeKey = sanitizeKey(authUser.email);
@@ -1148,23 +1332,42 @@ function showSendSuccessToast(amount) {
                     if (rtdbSnap.exists()) {
                         const data = rtdbSnap.val();
                         if (data.role) role = data.role;
+                        if (data.avatar) avatar = data.avatar;
                         if (data.expiresAt) {
                             const exp = Number(data.expiresAt) || 0;
                             if (exp < Date.now()) {
                                 await auth.signOut();
                                 setButtonLoading(submitBtn, false);
-                                showToast("Esta cuenta ha expirado");
+                                showLoginError(`<strong>Cuenta expirada</strong>Esta cuenta ya no está activa. Comunícate con el administrador para renovarla.`);
                                 return false;
                             }
                             expiresMs = exp;
                         }
                     }
                 } catch (_) { /* no metadata, default admin */ }
+                const newSessionId = generateSessionId();
+                // Verificar el límite de sesiones
+                const limit = await enforceSessionLimit(authUser.email, newSessionId);
+                if (!limit.ok) {
+                    await auth.signOut();
+                    setButtonLoading(submitBtn, false);
+                    showLoginError(
+                        `<strong>Cuenta en uso en otro dispositivo</strong>` +
+                        `Esta cuenta (<code>${escapeHtml(authUser.email)}</code>) ya tiene una sesión activa. ` +
+                        `Solo se permite <strong>1 dispositivo por cuenta</strong>.` +
+                        `<br>Para usar esta cuenta en este dispositivo, contacta al administrador y solicita una cuenta nueva.`
+                    );
+                    return false;
+                }
                 setSession({
                     username: authUser.email,
                     role: role,
+                    avatar: avatar,
+                    sessionId: newSessionId,
                     expiresAt: expiresMs,
                 });
+                // Registrar la sesión en RTDB
+                try { await registerSession(authUser.email, newSessionId); } catch (_) {}
                 setButtonLoading(submitBtn, false);
                 updateAuthUI();
                 closeAndWelcome({ username: authUser.email, displayName: "admin" });
@@ -1238,6 +1441,7 @@ function showSendSuccessToast(amount) {
 
     // ============== Sign out ==============
     function signOut() {
+        stopHeartbeat();
         clearSession();
         updateAuthUI();
         // Navigate to Destacadas
@@ -1386,10 +1590,11 @@ function showSendSuccessToast(amount) {
             list.innerHTML = `
                 <div class="admin-error">
                     <strong>⚠️ No se pudo leer la lista de usuarios.</strong>
-                    <p>Verifica las reglas de seguridad de Realtime Database en Firebase Console. Deben permitir <code>.read: true</code> en el nodo <code>users</code>:</p>
+                    <p>Verifica las reglas de seguridad de Realtime Database en Firebase Console. Para que el sistema completo funcione (incluyendo límite de sesiones), las reglas deben permitir lectura y escritura en <code>users</code> y <code>sessions</code>:</p>
                     <pre style="background:#fff8e8;padding:8px;border-radius:4px;font-size:11px;margin:6px 0;overflow:auto;">{
   "rules": {
-    "users": { ".read": true, ".write": true }
+    "users":    { ".read": true, ".write": true },
+    "sessions": { ".read": true, ".write": true }
   }
 }</pre>
                     <p class="admin-error-detail">Detalle: ${escapeHtml(detail)}</p>
